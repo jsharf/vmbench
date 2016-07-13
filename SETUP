@@ -1,0 +1,2 @@
+PATH=$PATH:/usr/local/src/projects/akaros/internal-akaros/akaros/install/bin/
+export AKAROS=/usr/local/src/projects/akaros/internal-akaros/akaros/
