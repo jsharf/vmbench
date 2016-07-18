@@ -15,8 +15,11 @@ static volatile int count;
 
 static void vmcall(void)
 {
-	count++;
-	__asm__ __volatile__ ("vmcall");
+	while (count < 1000){
+		while ((count & 1) == 0)
+			;
+		count++;
+	}
 }
 
 int main(int argc, char **argv)
@@ -25,7 +28,6 @@ int main(int argc, char **argv)
 	int ret;
 	int i;
 	struct vm_trapframe *vm_tf;
-	int failsafe = 0;
  
 	vm.low4k = malloc(PGSIZE);
 	memset(vm.low4k, 0xff, PGSIZE);
@@ -53,12 +55,14 @@ int main(int argc, char **argv)
 	vm_tf = gth_to_vmtf(vm.gths[0]);
 	vm_tf->tf_cr3 = (uint64_t) p512;
 	vm_tf->tf_rsp = 0;
-	while (count < 100 && failsafe++ < 100 ) {
-		vm_tf->tf_rip = (uint64_t) vmcall;
-		start_guest_thread(vm.gths[0]);
-		printf("Ran one, count is %d, failsafe %d\n", count, failsafe);
-	}
+	vm_tf->tf_rip = (uint64_t) vmcall;
+	start_guest_thread(vm.gths[0]);
 
-	uthread_sleep_forever();
+	while (count < 1000){
+		while ((count & 1) == 1)
+			;
+		count++;
+	}
+//	uthread_sleep_forever();
 	return 0;
 }
