@@ -306,6 +306,8 @@ static void vmcall(void)
 }
 
 
+uint64_t stack[512];
+
 int main(int argc, char **argv)
 {
 	struct boot_params *bp;
@@ -610,7 +612,7 @@ int main(int argc, char **argv)
 	vm_tf = gth_to_vmtf(vm->gths[0]);
 	vm_tf->tf_cr3 = (uint64_t) p512;
 	vm_tf->tf_rip = entry;
-	vm_tf->tf_rsp = 0;
+	vm_tf->tf_rsp = (uint64_t) &stack[511];
 	vm_tf->tf_rsi = (uint64_t) bp;
 	start_guest_thread(vm->gths[0]);
 
