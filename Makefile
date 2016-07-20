@@ -3,7 +3,7 @@
 
 ### Build flags for all targets
 #
-CFLAGS          = -O2 -std=gnu99 -fno-stack-protector -fgnu89-inline -Wsystem-headers -fPIC -static -fno-omit-frame-pointer -g -Iinclude -Werror -Wall
+CFLAGS          = -O2 -std=gnu99 -fno-stack-protector -fgnu89-inline -fPIC -static -fno-omit-frame-pointer -g -Iinclude -Wall
 LDFLAGS          =
 LDLIBS         = -L$(AKAROS)/install/x86_64-ucb-akaros/sysroot/usr/lib -lpthread -lbenchutil -lm -liplib -lndblib -lvmm -lbenchutil
 DEST	= $(AKAROS)/kern/kfs/bin
@@ -14,6 +14,7 @@ CC=x86_64-ucb-akaros-gcc
 AR=x86_64-ucb-akaros-ar
 ALL=vmexit
 all: $(ALL)
+	scp $(ALL) skynet:
 
 install: all
 	echo "Installing $(ALL) in $(DEST)"
