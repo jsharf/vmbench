@@ -6,11 +6,9 @@
 #include <vmm/vmm.h>
 
 struct virtual_machine local_vm, *vm = &local_vm;
-
 struct vmm_gpcore_init gpci;
 
-
-unsigned long long *p512, *p1, *p2m;
+unsigned long long *p512, *p1, *p2m, *stack;
 
 void **my_retvals;
 int nr_threads = 4;
@@ -29,36 +27,27 @@ static void vmcall(void)
 }
 
 
-uint64_t stack[512];
 void *page(void *addr)
 {
+	void *v;
 	unsigned long flags = MAP_POPULATE | MAP_ANONYMOUS;
 	if (addr)
 		flags |= MAP_FIXED;
 
-	return (void *)mmap(addr, 4096, PROT_READ | PROT_WRITE, flags, -1, 0);
+	v = (void *)mmap(addr, 4096, PROT_READ | PROT_WRITE, flags, -1, 0);
+	fprintf(stderr, "Page: request %p, get %p\n", addr, v);
+	return v;
 }
 
 int main(int argc, char **argv)
 {
-
-
-
-
 	int vmmflags = 0; // Disabled probably forever. VMM_VMCALL_PRINTF;
 	uint64_t entry = 0x1200000, kerneladdress = 0x1200000;
 	int ret;
 	uintptr_t size;
 	void * xp;
-	//static char cmd[512];
-	//int i;
-
-
 	void *a_page;
 	struct vm_trapframe *vm_tf;
-
-
-
 
 	fprintf(stderr, "%p %p %p %p\n", (void *)PGSIZE, (void *)PGSHIFT, (void *)PML1_SHIFT,
 		(void *)PML1_PTE_REACH);
@@ -103,16 +92,15 @@ int main(int argc, char **argv)
 	ret = vmm_init(vm, vmmflags);
 	assert(!ret);
 
+	p512 = page(0x1000000);
+	p1 = page(p512+512);
+	p2m = page(p1+512);
+	stack = page(p2m+512);
 	/* Allocate 3 pages for page table pages: a page of 512 GiB
 	 * PTEs with only one entry filled to point to a page of 1 GiB
 	 * PTEs; a page of 1 GiB PTEs with only one entry filled to
 	 * point to a page of 2 MiB PTEs; and a page of 2 MiB PTEs,
 	 * only a subset of which will be filled. */
-	ret = posix_memalign((void **)&p512, PGSIZE, 3 * PGSIZE);
-	if (ret) {
-		perror("ptp alloc");
-		exit(1);
-	}
 
 	/* Set up a 1:1 ("identity") page mapping from guest virtual
 	 * to guest physical using the (host virtual)
@@ -122,8 +110,6 @@ int main(int argc, char **argv)
 	 * This is subtle and mistakes are easily disguised due to the
 	 * identity mapping, so take care when manipulating these
 	 * mappings. */
-	p1 = &p512[NPTENTRIES];
-	p2m = &p512[2 * NPTENTRIES];
 
 	p512[PML4(kerneladdress)] = (uint64_t)p1 | PTE_KERN_RW;
 	p1[PML3(kerneladdress)] = (uint64_t)p2m | PTE_KERN_RW;
@@ -137,7 +123,7 @@ int main(int argc, char **argv)
 	vm_tf = gth_to_vmtf(vm->gths[0]);
 	vm_tf->tf_cr3 = (uint64_t) p512;
 	vm_tf->tf_rip = entry;
-	vm_tf->tf_rsp = (uint64_t) entry;
+	vm_tf->tf_rsp = (uint64_t) (stack+512);
 	vm_tf->tf_rsi = 0;
 	start_guest_thread(vm->gths[0]);
 
