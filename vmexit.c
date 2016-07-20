@@ -384,6 +384,7 @@ int main(int argc, char **argv)
 		perror("Unable to mmap low 1m");
 		exit(1);
 	}
+#if 0
 	memset(low1m, 0xff, MiB-4096);
 	r = a;
 	fprintf(stderr, "install rsdp to %p\n", r);
@@ -463,6 +464,7 @@ int main(int argc, char **argv)
 	fprintf(stderr, "allchecksums ok\n");
 
 	hexdump(stdout, r, a-(void *)r);
+#endif
 
 	a = (void *)(((unsigned long)a + 0xfff) & ~0xfff);
 	gpci.posted_irq_desc = a;
@@ -478,6 +480,7 @@ int main(int argc, char **argv)
 	a += 4096;
 	gpci.apic_addr = (void*)0xfee00000;
 
+#if 0
 	/* Allocate memory for, and zero the bootparams
 	 * page before writing to it, or Linux thinks
 	 * we're talking crazy.
@@ -538,6 +541,7 @@ int main(int argc, char **argv)
 	cmdline = a;
 	a += 4096;
 	bp->hdr.cmd_line_ptr = (uintptr_t) cmdline;
+#endif
 #if 0
 	tsc_freq_khz = get_tsc_freq()/1000;
 	len = snprintf(cmdline, 4096, "%s tscfreq=%d %s", cmdline_default,
@@ -602,17 +606,12 @@ int main(int argc, char **argv)
 		    (uint64_t)(kerneladdress + i) | PTE_KERN_RW | PTE_PS;
 	}
 
-	//uint8_t *kernel = (void *)GKERNBASE;
-	//write_coreboot_table(coreboot_tables, ((void *)VIRTIOBASE) /*kernel*/, KERNSIZE + 1048576);
-	hexdump(stdout, coreboot_tables, 512);
-	//fprintf(stderr, "p512 %p p512[0] is 0x%lx p1 %p p1[0] is 0x%x\n", p512, p512[0], p1, p1[0]);
-
 	vmm_run_task(vm, timer_thread, 0);
 
 	vm_tf = gth_to_vmtf(vm->gths[0]);
 	vm_tf->tf_cr3 = (uint64_t) p512;
 	vm_tf->tf_rip = entry;
-	vm_tf->tf_rsp = (uint64_t) &stack[511];
+	vm_tf->tf_rsp = (uint64_t) entry;
 	vm_tf->tf_rsi = (uint64_t) bp;
 	start_guest_thread(vm->gths[0]);
 
