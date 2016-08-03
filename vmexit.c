@@ -8,21 +8,22 @@
 struct virtual_machine local_vm, *vm = &local_vm;
 struct vmm_gpcore_init gpci;
 
-unsigned long long *p512, *p1, *p2m, *stack;
+unsigned long long *p512, *p1, *p2m;
+unsigned long long stack[512];
 
 void **my_retvals;
 int nr_threads = 4;
-static volatile int *count;
+static volatile int count;
 
 static void vmcall(void *a)
 {
-	volatile int *count = a;
-	__asm__ __volatile__("1: /*mov $0x30,  %rdi\n\t*/vmcall\n\t");
-	while (*count < 1000) {
-		__asm__ __volatile__("1: /*xor %rdi, %rdi\n\t*/vmcall\n\tjmp 1b\n\t");
-		*count++;
+	//__asm__ __volatile__("1: /*jmp 1b/*mov $0x30,  %rdi\n\t*/vmcall\n\t");
+	while (count < 1000000) {
+		//__asm__ __volatile__("1: /*xor %rdi, %rdi\n\t*/vmcall\n\tjmp 1b\n\t");
+		__asm__ __volatile__("vmcall\n\t");
+		count++;
 	}
-	__asm__ __volatile__("1: /*mov $0x31,  %rdi\n\t*/vmcall\n\t");
+	//__asm__ __volatile__("1: /*mov $0x31,  %rdi\n\t*/vmcall\n\t");
 	*(int *)0 = 1;
 }
 
@@ -42,8 +43,7 @@ void *page(void *addr)
 int main(int argc, char **argv)
 {
 	int vmmflags = 0; // Disabled probably forever. VMM_VMCALL_PRINTF;
-	uint64_t entry = 0x1200000, kerneladdress = 0x1200000;
-	void * xp;
+	uint64_t entry = (uint64_t)vmcall, kerneladdress = (uint64_t)vmcall;
 	void *a_page;
 	struct vm_trapframe *vm_tf;
 
@@ -59,9 +59,6 @@ int main(int argc, char **argv)
 	((uint32_t *)a_page)[0x30/4] = 0x01060015;
 	//((uint32_t *)a_page)[0x30/4] = 0xDEADBEEF;
 
-	xp = page((void *)kerneladdress);
-	memmove(xp, (void *)vmcall+0, 4096);
-
 	gpci.posted_irq_desc = page(NULL);
 	gpci.vapic_addr = page(NULL);
 
@@ -74,7 +71,6 @@ int main(int argc, char **argv)
 	p512 = page((void *)0x1000000);
 	p1 = page(p512+512);
 	p2m = page(p1+512);
-	stack = page(p2m+512);
 	/* Allocate 3 pages for page table pages: a page of 512 GiB
 	 * PTEs with only one entry filled to point to a page of 1 GiB
 	 * PTEs; a page of 1 GiB PTEs with only one entry filled to
@@ -92,19 +88,23 @@ int main(int argc, char **argv)
 
 	p512[PML4(kerneladdress)] = (uint64_t)p1 | PTE_KERN_RW;
 	p1[PML3(kerneladdress)] = (uint64_t)p2m | PTE_KERN_RW;
+	p1[PML3(kerneladdress)] = PTE_PS | PTE_KERN_RW;
 	for (uintptr_t i = 0; i < 1024*1024*1024; i += PML2_PTE_REACH) {
 		p2m[PML2(kerneladdress + i)] =
 		    (uint64_t)(kerneladdress + i) | PTE_KERN_RW | PTE_PS;
 	}
 
-	count = (void *)(entry + 2048);
 	vm_tf = gth_to_vmtf(vm->gths[0]);
 	vm_tf->tf_cr3 = (uint64_t) p512;
-	vm_tf->tf_rip = entry;
-	vm_tf->tf_rsp = entry + 2048; // (uint64_t) (stack+500);
+	vm_tf->tf_rip = entry /*+ 4;*/;
+	vm_tf->tf_rsp = (uint64_t) (stack+511);
 	vm_tf->tf_rdi = (uint64_t) count;
 	start_guest_thread(vm->gths[0]);
 
-	uthread_sleep_forever();
+	while(count < 1000) {
+		printf("are we there yet?\n");
+		getchar();
+	}
+
 	return 0;
 }
