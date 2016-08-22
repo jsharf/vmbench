@@ -146,11 +146,12 @@ int main(int argc, char **argv)
 	while ((guestcount < ITER) && (! fucked)) {
 		load((uint8_t*)_);
 		hostcount++;
+		while(guestcount&1)
+			;
 		if (guestcount % 1000 == 0)
 			printf("%d guest iterations\n", guestcount);
-		if (hostcount % 1000 == 0) {
+		if (hostcount % 100000 == 0) {
 			printf("%d host iterations\n", hostcount);
-			sleep(1);
 		}
 	}
 	if (fucked) {
