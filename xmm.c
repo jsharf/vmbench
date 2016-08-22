@@ -14,31 +14,30 @@ unsigned long long stack[512];
 void **my_retvals;
 int nr_threads = 4;
 static volatile int guestcount, hostcount;
-static int fucked;
+static volatile int fucked;
 static uint8_t guest[16];
+static char *_ = "deadbeefbeefdead";
 
 void hexdump(FILE *f, void *v, int length);
 void store(uint8_t *x)
 {
-	printf("Store "); hexdump(stdout, x, 16);
-	__asm__ __volatile__ ("movdqu %%xmm0, %[x]\n": [x] "=m" (x));
+	__asm__ __volatile__ ("movdqu %%xmm0, %[x]\n": [x] "=m" (*x));
 }
 void load(uint8_t *x)
 {
-	printf("load "); hexdump(stdout, x, 16);
-	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (x));
+	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (*x));
 }
 static void vmcall(void *a)
 {
-	static char *_ = "0xdeadbeefbeefdead";
-	static uint8_t data[16];
-	load((uint8_t*)&_);
-	while (1) {
-		store(data);
-		if (memcmp(&_, data, sizeof(data))){
-			fucked = 1;
-			store(guest);
-		}
+	load((uint8_t*)_);
+	while (! fucked) {
+		store(guest);
+		/* hand code memcmp */
+		for(int i = 0; i < 16; i++)
+			if (_[i] != guest[i])
+				fucked++;
+			if (fucked)
+				store(guest);
 		__asm__ __volatile__("vmcall\n\t");
 		guestcount++;
 	}
@@ -64,6 +63,16 @@ int main(int argc, char **argv)
 	uint64_t entry = (uint64_t)vmcall, kerneladdress = (uint64_t)vmcall;
 	void *a_page;
 	struct vm_trapframe *vm_tf;
+
+	/* sanity */
+	load((uint8_t*)_);
+	store(guest);
+	if (memcmp(_, guest, 16)){
+		printf("simple test failed: input:"); hexdump(stdout, (void*)_, 16); printf(":output:"); hexdump(stdout, guest, 16);printf(":\n");
+		exit(1);
+	}
+	printf("sanity test passed, output:"); hexdump(stdout, guest, 16); printf(":\n");
+
 
 	fprintf(stderr, "%p %p %p %p\n", (void *)PGSIZE, (void *)PGSHIFT, (void *)PML1_SHIFT,
 		(void *)PML1_PTE_REACH);
@@ -121,9 +130,9 @@ int main(int argc, char **argv)
 
 	char *_ = "0xaaffeeffeeaabbcc";
 	uint8_t data[16];
-	//load((uint8_t*)&_);
+	load((uint8_t*)_);
 	while(! fucked) {
-		//load((uint8_t*)&_);
+		load((uint8_t*)_);
 		hostcount++;
 	}
 	printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
