@@ -20,16 +20,18 @@ static uint8_t guest[16];
 void hexdump(FILE *f, void *v, int length);
 void store(uint8_t *x)
 {
-	__asm__ __volatile__ ("movdqu %%xmm0, %[x]\n": [x] "=m" (*x));
+	printf("Store "); hexdump(stdout, x, 16);
+	__asm__ __volatile__ ("movdqu %%xmm0, %[x]\n": [x] "=m" (x));
 }
 void load(uint8_t *x)
 {
-	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (*x));
+	printf("load "); hexdump(stdout, x, 16);
+	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (x));
 }
 static void vmcall(void *a)
 {
-	char *_ = "0xdeadbeefbeefdead";
-	uint8_t data[16];
+	static char *_ = "0xdeadbeefbeefdead";
+	static uint8_t data[16];
 	load((uint8_t*)&_);
 	while (1) {
 		store(data);
@@ -40,6 +42,7 @@ static void vmcall(void *a)
 		__asm__ __volatile__("vmcall\n\t");
 		guestcount++;
 	}
+	while(1);
 }
 
 
@@ -118,9 +121,9 @@ int main(int argc, char **argv)
 
 	char *_ = "0xaaffeeffeeaabbcc";
 	uint8_t data[16];
-	load((uint8_t*)&_);
+	//load((uint8_t*)&_);
 	while(! fucked) {
-		load((uint8_t*)&_);
+		//load((uint8_t*)&_);
 		hostcount++;
 	}
 	printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
