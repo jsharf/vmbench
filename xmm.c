@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <vmm/vmm.h>
 
+#define ITER 100000
+
 struct virtual_machine local_vm, *vm = &local_vm;
 struct vmm_gpcore_init gpci;
 
@@ -27,10 +29,20 @@ void load(uint8_t *x)
 {
 	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (*x));
 }
+void vmexit()
+{
+		/*
+		 * It seems to be hard to turn off printing sometimes.
+		 * Just have it print a null. This also makes it easy to
+		 * track vmcalls with strace (each vmcall is a write to 1).
+		 */
+		__asm__ __volatile__("xorw %di, %di\n\tvmcall\n\t");
+	
+}
 static void vmcall(void *a)
 {
 	load((uint8_t*)_);
-	while (! fucked) {
+	while ((guestcount < ITER) && (! fucked)) {
 		store(guest);
 		/* hand code memcmp */
 		for(int i = 0; i < 16; i++)
@@ -38,7 +50,7 @@ static void vmcall(void *a)
 				fucked++;
 			if (fucked)
 				store(guest);
-		__asm__ __volatile__("vmcall\n\t");
+		vmexit();
 		guestcount++;
 	}
 	while(1);
@@ -131,13 +143,21 @@ int main(int argc, char **argv)
 	char *_ = "0xaaffeeffeeaabbcc";
 	uint8_t data[16];
 	load((uint8_t*)_);
-	while(! fucked) {
+	while ((guestcount < ITER) && (! fucked)) {
 		load((uint8_t*)_);
 		hostcount++;
+		if (guestcount % 1000 == 0)
+			printf("%d guest iterations\n", guestcount);
+		if (hostcount % 1000 == 0) {
+			printf("%d host iterations\n", hostcount);
+			sleep(1);
+		}
 	}
-	printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
-	store(data);
-	printf("guest says: "); hexdump(stdout, guest, 16); printf("\n");
-	printf("host says: "); hexdump(stdout, data, 16); printf("\n");
+	if (fucked) {
+		printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
+		store(data);
+		printf("guest says: "); hexdump(stdout, guest, 16); printf("\n");
+		printf("host says: "); hexdump(stdout, data, 16); printf("\n");
+	}
 	return 0;
 }
