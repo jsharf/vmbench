@@ -13,20 +13,33 @@ unsigned long long stack[512];
 
 void **my_retvals;
 int nr_threads = 4;
-static volatile int count;
+static volatile int guestcount, hostcount;
+static int fucked;
+static uint8_t guest[16];
 
+void hexdump(FILE *f, void *v, int length);
+void store(uint8_t *x)
+{
+	__asm__ __volatile__ ("movdqu %%xmm0, %[x]\n": [x] "=m" (*x));
+}
+void load(uint8_t *x)
+{
+	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (*x));
+}
 static void vmcall(void *a)
 {
-	//__asm__ __volatile__("1: /*jmp 1b/*mov $0x30,  %rdi\n\t*/vmcall\n\t");
-	while (count < 1000000) {
-		//__asm__ __volatile__("1: /*xor %rdi, %rdi\n\t*/vmcall\n\tjmp 1b\n\t");
+	char *_ = "0xdeadbeefbeefdead";
+	uint8_t data[16];
+	load((uint8_t*)&_);
+	while (1) {
+		store(data);
+		if (memcmp(&_, data, sizeof(data))){
+			fucked = 1;
+			store(guest);
+		}
 		__asm__ __volatile__("vmcall\n\t");
-		count++;
+		guestcount++;
 	}
-	count++;
-	//__asm__ __volatile__("1: /*mov $0x31,  %rdi\n\t*/vmcall\n\t");
-	//*(int *)0 = 1;
-	while (1);
 }
 
 
@@ -100,12 +113,19 @@ int main(int argc, char **argv)
 	vm_tf->tf_cr3 = (uint64_t) p512;
 	vm_tf->tf_rip = entry /*+ 4;*/;
 	vm_tf->tf_rsp = (uint64_t) (stack+511);
-	vm_tf->tf_rdi = (uint64_t) count;
+	vm_tf->tf_rdi = (uint64_t) guestcount;
 	start_guest_thread(vm->gths[0]);
 
-	while(count < 1000000) {
+	char *_ = "0xaaffeeffeeaabbcc";
+	uint8_t data[16];
+	load((uint8_t*)&_);
+	while(! fucked) {
+		load((uint8_t*)&_);
+		hostcount++;
 	}
-	printf("hi\n");
-
+	printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
+	store(data);
+	printf("guest says: "); hexdump(stdout, guest, 16); printf("\n");
+	printf("host says: "); hexdump(stdout, data, 16); printf("\n");
 	return 0;
 }
