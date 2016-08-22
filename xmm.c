@@ -71,11 +71,13 @@ void *page(void *addr)
 
 int main(int argc, char **argv)
 {
+	extern bool parlib_wants_to_be_mcp;
 	int vmmflags = 0; // Disabled probably forever. VMM_VMCALL_PRINTF;
 	uint64_t entry = (uint64_t)vmcall, kerneladdress = (uint64_t)vmcall;
 	void *a_page;
 	struct vm_trapframe *vm_tf;
 
+	parlib_wants_to_be_mcp = FALSE;
 	/* sanity */
 	load((uint8_t*)_);
 	store(guest);
@@ -146,13 +148,14 @@ int main(int argc, char **argv)
 	while ((guestcount < ITER) && (! fucked)) {
 		load((uint8_t*)_);
 		hostcount++;
-		while(guestcount&1)
+		while(! (guestcount&1))
 			;
 		if (guestcount % 1000 == 0)
 			printf("%d guest iterations\n", guestcount);
 		if (hostcount % 100000 == 0) {
 			printf("%d host iterations\n", hostcount);
 		}
+		sleep(1);
 	}
 	if (fucked) {
 		printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
