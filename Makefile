@@ -12,7 +12,7 @@ DEST	= $(AKAROS)/kern/kfs/bin
 # 
 CC=x86_64-ucb-akaros-gcc
 AR=x86_64-ucb-akaros-ar
-ALL=vmexit
+ALL=vmexit xmm
 all: $(ALL)
 	scp $(ALL) skynet:
 
@@ -23,6 +23,8 @@ install: all
 # compilers are fast. Just rebuild it each time.
 vmexit: vmexit.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o vmexit vmexit.c  $(LDLIBS)
+xmm: xmm.c
+	$(CC) $(CFLAGS) $(LDFLAGS) -o xmm xmm.c  $(LDLIBS)
 clean:
 	rm -f $(ALL) *.o
 

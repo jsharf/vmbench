@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <vmm/vmm.h>
 
+#define ITER 100000
+
 struct virtual_machine local_vm, *vm = &local_vm;
 struct vmm_gpcore_init gpci;
 
@@ -13,20 +15,45 @@ unsigned long long stack[512];
 
 void **my_retvals;
 int nr_threads = 4;
-static volatile int count;
+static volatile int guestcount, hostcount;
+static volatile int fucked;
+static uint8_t guest[16];
+static char *_ = "deadbeefbeefdead";
 
+void hexdump(FILE *f, void *v, int length);
+void store(uint8_t *x)
+{
+	__asm__ __volatile__ ("movdqu %%xmm0, %[x]\n": [x] "=m" (*x));
+}
+void load(uint8_t *x)
+{
+	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (*x));
+}
+void vmexit()
+{
+		/*
+		 * It seems to be hard to turn off printing sometimes.
+		 * Just have it print a null. This also makes it easy to
+		 * track vmcalls with strace (each vmcall is a write to 1).
+		 */
+		__asm__ __volatile__("xorw %di, %di\n\tvmcall\n\t");
+	
+}
 static void vmcall(void *a)
 {
-	//__asm__ __volatile__("1: /*jmp 1b/*mov $0x30,  %rdi\n\t*/vmcall\n\t");
-	while (count < 1000000) {
-		//__asm__ __volatile__("1: /*xor %rdi, %rdi\n\t*/vmcall\n\tjmp 1b\n\t");
-		__asm__ __volatile__("vmcall\n\t");
-		count++;
+	load((uint8_t*)_);
+	while ((guestcount < ITER) && (! fucked)) {
+		store(guest);
+		/* hand code memcmp */
+		for(int i = 0; i < 16; i++)
+			if (_[i] != guest[i])
+				fucked++;
+			if (fucked)
+				store(guest);
+		vmexit();
+		guestcount++;
 	}
-	count++;
-	//__asm__ __volatile__("1: /*mov $0x31,  %rdi\n\t*/vmcall\n\t");
-	//*(int *)0 = 1;
-	while (1);
+	while(1);
 }
 
 
@@ -44,10 +71,22 @@ void *page(void *addr)
 
 int main(int argc, char **argv)
 {
+	extern bool parlib_wants_to_be_mcp;
 	int vmmflags = 0; // Disabled probably forever. VMM_VMCALL_PRINTF;
 	uint64_t entry = (uint64_t)vmcall, kerneladdress = (uint64_t)vmcall;
 	void *a_page;
 	struct vm_trapframe *vm_tf;
+
+	parlib_wants_to_be_mcp = FALSE;
+	/* sanity */
+	load((uint8_t*)_);
+	store(guest);
+	if (memcmp(_, guest, 16)){
+		printf("simple test failed: input:"); hexdump(stdout, (void*)_, 16); printf(":output:"); hexdump(stdout, guest, 16);printf(":\n");
+		exit(1);
+	}
+	printf("sanity test passed, output:"); hexdump(stdout, guest, 16); printf(":\n");
+
 
 	fprintf(stderr, "%p %p %p %p\n", (void *)PGSIZE, (void *)PGSHIFT, (void *)PML1_SHIFT,
 		(void *)PML1_PTE_REACH);
@@ -100,12 +139,29 @@ int main(int argc, char **argv)
 	vm_tf->tf_cr3 = (uint64_t) p512;
 	vm_tf->tf_rip = entry /*+ 4;*/;
 	vm_tf->tf_rsp = (uint64_t) (stack+511);
-	vm_tf->tf_rdi = (uint64_t) count;
+	vm_tf->tf_rdi = (uint64_t) guestcount;
 	start_guest_thread(vm->gths[0]);
 
-	while(count < 1000000) {
+	char *_ = "0xaaffeeffeeaabbcc";
+	uint8_t data[16];
+	load((uint8_t*)_);
+	while ((guestcount < ITER) && (! fucked)) {
+		load((uint8_t*)_);
+		hostcount++;
+		while(! (guestcount&1))
+			;
+		if (guestcount % 1000 == 0)
+			printf("%d guest iterations\n", guestcount);
+		if (hostcount % 100000 == 0) {
+			printf("%d host iterations\n", hostcount);
+		}
+		sleep(1);
 	}
-	printf("hi\n");
-
+	if (fucked) {
+		printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
+		store(data);
+		printf("guest says: "); hexdump(stdout, guest, 16); printf("\n");
+		printf("host says: "); hexdump(stdout, data, 16); printf("\n");
+	}
 	return 0;
 }
