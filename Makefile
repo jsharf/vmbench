@@ -5,7 +5,7 @@
 #
 CFLAGS          = -O2 -std=gnu99 -fno-stack-protector -fgnu89-inline -fPIC -static -fno-omit-frame-pointer -g -Iinclude -Wall
 LDFLAGS          =
-LDLIBS         = -L$(AKAROS)/install/x86_64-ucb-akaros/sysroot/usr/lib -lpthread -lbenchutil -lm -liplib -lndblib -lvmm -lbenchutil
+LDLIBS         = -L$(AKAROS_XCC_ROOT)/x86_64-ucb-akaros/sysroot/usr/lib -lpthread -lbenchutil -lm -liplib -lndblib -lvmm -lbenchutil
 DEST	= $(AKAROS)/kern/kfs/bin
 
 ### Build tools
