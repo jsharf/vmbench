@@ -5,14 +5,15 @@
 #include <unistd.h>
 #include <vmm/vmm.h>
 
-struct virtual_machine vm;
+struct virtual_machine vm = {.halt_exit = true,};
 
 static volatile int count;
 int mc;
 
 static void vmcall(void *a)
 {
-	while (count < 1000000) {
+	__asm__ __volatile__("hlt\n\t");
+	while (count < 10/*00000*/) {
 		__asm__ __volatile__("vmcall\n\t");
 		count++;
 	}
@@ -20,19 +21,13 @@ static void vmcall(void *a)
 }
 
 
-unsigned long long s[512];
-
 int main(int argc, char **argv)
 {
 
 	if (vthread_attr_init(&vm, 0) < 0)
 		err(1, "vthread_attr_init: %r: ");
-	vthread_create(&vm, 0, vmcall, NULL, &s[511]);
+	vthread_create(&vm, 0, vmcall, NULL);
 
-	while(count < 100000) {
-		mc++;
-	}
-
-	printf("Guest count %d, master count %d\n", count, mc);
+	uthread_sleep_forever();
 	return 0;
 }
