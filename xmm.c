@@ -21,10 +21,12 @@ static uint8_t guest[16];
 static char *_ = "deadbeefbeefdead";
 
 void hexdump(FILE *f, void *v, int length);
+/* Store xmm in *x */
 void store(uint8_t *x)
 {
 	__asm__ __volatile__ ("movdqu %%xmm0, %[x]\n": [x] "=m" (*x));
 }
+/* Load *x into xmm */
 void load(uint8_t *x)
 {
 	__asm__ __volatile__ ("movdqu %[x], %%xmm0\n":: [x] "m" (*x));
@@ -67,6 +69,31 @@ void *page(void *addr)
 	v = (void *)mmap(addr, 4096, PROT_READ | PROT_WRITE, flags, -1, 0);
 	fprintf(stderr, "Page: request %p, get %p\n", addr, v);
 	return v;
+}
+
+// Pokes the xmm register. Meant to be run in a task thread via vmm_run_task.
+void poke_xmm_thread(void *arg) {
+	char *_ = "0xaaffeeffeeaabbcc";
+	uint8_t data[16];
+	load((uint8_t*)_);
+	while ((guestcount < ITER) && (! fucked)) {
+		load((uint8_t*)_);
+		hostcount++;
+		while(! (guestcount&1))
+			;
+		if (guestcount % 1000 == 0)
+			printf("%d guest iterations\n", guestcount);
+		if (hostcount % 100000 == 0) {
+			printf("%d host iterations\n", hostcount);
+		}
+		sleep(1);
+	}
+	if (fucked) {
+		printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
+		store(data);
+		printf("guest says: "); hexdump(stdout, guest, 16); printf("\n");
+		printf("host says: "); hexdump(stdout, data, 16); printf("\n");
+	}
 }
 
 int main(int argc, char **argv)
@@ -142,26 +169,9 @@ int main(int argc, char **argv)
 	vm_tf->tf_rdi = (uint64_t) guestcount;
 	start_guest_thread(vm->gths[0]);
 
-	char *_ = "0xaaffeeffeeaabbcc";
-	uint8_t data[16];
-	load((uint8_t*)_);
-	while ((guestcount < ITER) && (! fucked)) {
-		load((uint8_t*)_);
-		hostcount++;
-		while(! (guestcount&1))
-			;
-		if (guestcount % 1000 == 0)
-			printf("%d guest iterations\n", guestcount);
-		if (hostcount % 100000 == 0) {
-			printf("%d host iterations\n", hostcount);
-		}
-		sleep(1);
-	}
-	if (fucked) {
-		printf("we're fucked after %d guest iterations, %d host iterations\n", guestcount, hostcount);
-		store(data);
-		printf("guest says: "); hexdump(stdout, guest, 16); printf("\n");
-		printf("host says: "); hexdump(stdout, data, 16); printf("\n");
-	}
+        printf("Running XMM test in alternate thread. Proof sharf@ made a change :)\n");
+	vmm_run_task(vm, poke_xmm_thread, 0);
+
+	uthread_sleep_forever();
 	return 0;
 }
